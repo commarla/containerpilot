@@ -144,6 +144,9 @@ cover: build/containerpilot_build
 	mkdir -p cover
 	$(docker) bash ./scripts/cover.sh
 
+do:
+	$(docker) go generate ./events
+
 ## generate Consul server test code
 generate: consul
 	go run integration_tests/generation/genconsul.go -- \
