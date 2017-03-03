@@ -1,4 +1,4 @@
-package events
+package services
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/joyent/containerpilot/commands"
+	"github.com/joyent/containerpilot/events"
 )
 
 /*
@@ -13,7 +14,7 @@ TODO: this is temporary while I hack out how this will interact
 with everything else. It'll go in the `services` package when I'm done
 */
 
-type Service struct {
+type ServiceEvents struct {
 	Args      []string
 	Command   *commands.Command
 	ID        string
@@ -24,92 +25,78 @@ type Service struct {
 	Status    bool   // TODO config
 
 	// Event handling
-	EventHandler
-	startupEvent   Event
+	events.EventHandler
+	startupEvent   events.Event
 	startupTimeout int
 	restarts       int // -1 for "always"
 	runEvery       int
 	heartbeat      int
 }
 
-func (svc *Service) Run() {
+func (svc *ServiceEvents) Run() {
 	// TODO: this will probably be a background context b/c we've got
 	// message-passing to the main loop for cancellation
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	runEverySource := fmt.Sprintf("%s-run-every", svc.ID)
 	if svc.runEvery > 0 {
-		timercfg := &EventTimerConfig{
-			ctx:  ctx,
-			rx:   svc.rx,
-			tick: time.Duration(svc.runEvery) * time.Second,
-			name: runEverySource,
-		}
-		NewEventTimeout(timercfg)
+		events.NewEventTimeout(ctx, svc.Rx,
+			time.Duration(svc.runEvery)*time.Second, runEverySource)
 	}
 
 	heartbeatSource := fmt.Sprintf("%s-heartbeat", svc.ID)
 	if svc.heartbeat > 0 {
-		timercfg := &EventTimerConfig{
-			ctx:  ctx,
-			rx:   svc.rx,
-			tick: time.Duration(svc.heartbeat) * time.Second,
-			name: heartbeatSource,
-		}
-		NewEventTimeout(timercfg)
+		events.NewEventTimeout(ctx, svc.Rx,
+			time.Duration(svc.heartbeat)*time.Second, heartbeatSource)
 	}
+
 	timeoutSource := fmt.Sprintf("%s-wait-timeout", svc.ID)
 	if svc.startupTimeout > 0 {
-		timercfg := &EventTimerConfig{
-			ctx:  ctx,
-			rx:   svc.rx,
-			tick: time.Duration(svc.startupTimeout) * time.Second,
-			name: timeoutSource,
-		}
-		NewEventTimeout(timercfg)
+		events.NewEventTimeout(ctx, svc.Rx,
+			time.Duration(svc.startupTimeout)*time.Second, timeoutSource)
 	}
 
 	go func() {
 		select {
-		case event := <-svc.rx:
+		case event := <-svc.Rx:
 			switch event.Code {
-			case TimerExpired:
+			case events.TimerExpired:
 				switch event.Source {
 				case heartbeatSource:
 					if svc.Status == true {
 						fmt.Printf("heartbeat: %s\n", svc.ID)
 					}
 				case timeoutSource:
-					svc.bus.Publish(Event{Code: TimerExpired, Source: svc.ID})
-					svc.rx <- Event{Code: Quit, Source: svc.ID}
+					svc.Bus.Publish(events.Event{Code: events.TimerExpired, Source: svc.ID})
+					svc.Rx <- events.Event{Code: events.Quit, Source: svc.ID}
 				case runEverySource:
 					if svc.restarts > 0 || svc.restarts < 0 {
-						svc.rx <- Event{Code: svc.startupEvent.Code, Source: svc.ID}
+						svc.Rx <- events.Event{Code: svc.startupEvent.Code, Source: svc.ID}
 						svc.restarts--
 					}
 				}
-			case Quit:
+			case events.Quit:
 				if event.Source == svc.ID {
 					break
 				}
 				fallthrough
-			case Shutdown:
-				svc.Unsubscribe(svc.bus)
-				close(svc.rx)
+			case events.Shutdown:
+				svc.Unsubscribe(svc.Bus)
+				close(svc.Rx)
 				cancel()
-				svc.flush <- true
+				svc.Flush <- true
 				return
-			case ExitSuccess:
-			case ExitFailed:
+			case events.ExitSuccess:
+			case events.ExitFailed:
 				if event.Source == svc.ID && svc.restarts > 0 || svc.restarts < 0 {
-					svc.rx <- Event{Code: svc.startupEvent.Code, Source: svc.ID}
+					svc.Rx <- events.Event{Code: svc.startupEvent.Code, Source: svc.ID}
 					svc.restarts--
 				}
 			case svc.startupEvent.Code:
 				// run this in a goroutine and pass it our context
-				svc.bus.Publish(Event{Code: Started, Source: svc.ID})
+				svc.Bus.Publish(events.Event{Code: events.Started, Source: svc.ID})
 				fmt.Println("running!")
-				svc.bus.Publish(Event{Code: ExitSuccess, Source: svc.ID})
+				svc.Bus.Publish(events.Event{Code: events.ExitSuccess, Source: svc.ID})
 			default:
 				fmt.Println("don't care about this message")
 			}

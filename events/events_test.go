@@ -49,22 +49,22 @@ type TestSubscriber struct {
 
 func NewTestSubscriber(bus *EventBus) *TestSubscriber {
 	my := &TestSubscriber{lock: &sync.RWMutex{}, results: []Event{}}
-	my.rx = make(chan Event)
-	my.flush = make(chan bool)
-	my.bus = bus
+	my.Rx = make(chan Event)
+	my.Flush = make(chan bool)
+	my.Bus = bus
 	return my
 }
 
 func (ts *TestSubscriber) Run() {
 	go func() {
-		for event := range ts.rx {
+		for event := range ts.Rx {
 			switch event.Code {
 			case Quit:
 				ts.lock.Lock()
 				ts.results = append(ts.results, event)
-				ts.Unsubscribe(ts.bus)
-				ts.flush <- true
-				close(ts.rx)
+				ts.Unsubscribe(ts.Bus)
+				ts.Flush <- true
+				close(ts.Rx)
 				break
 			default:
 				ts.lock.Lock()

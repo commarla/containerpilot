@@ -5,33 +5,36 @@ import (
 	"time"
 )
 
-type EventTimerConfig struct {
-	ctx  context.Context
-	rx   chan Event
-	tick time.Duration
-	name string
-}
-
-func NewEventTimeout(cfg *EventTimerConfig) {
+func NewEventTimeout(
+	ctx context.Context,
+	rx chan Event,
+	tick time.Duration,
+	name string,
+) {
 	go func() {
-		timeout := time.After(cfg.tick)
+		timeout := time.After(tick)
 		select {
-		case <-cfg.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-timeout:
-			cfg.rx <- Event{Code: TimerExpired, Source: cfg.name}
+			rx <- Event{Code: TimerExpired, Source: name}
 		}
 	}()
 }
 
-func NewEventTimer(cfg *EventTimerConfig) {
+func NewEventTimer(
+	ctx context.Context,
+	rx chan Event,
+	tick time.Duration,
+	name string,
+) {
 	go func() {
-		ticker := time.NewTicker(cfg.tick)
+		ticker := time.NewTicker(tick)
 		select {
-		case <-cfg.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			cfg.rx <- Event{Code: TimerExpired, Source: cfg.name}
+			rx <- Event{Code: TimerExpired, Source: name}
 		}
 	}()
 }

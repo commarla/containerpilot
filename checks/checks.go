@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/joyent/containerpilot/commands"
+	"github.com/joyent/containerpilot/events"
 )
 
 type HealthCheck struct {
@@ -15,8 +16,8 @@ type HealthCheck struct {
 	Poll    int
 
 	// Event handling
-	EventHandler
-	startupEvent   Event
+	events.EventHandler
+	startupEvent   events.Event
 	startupTimeout int
 	restarts       int
 	heartbeat      int
@@ -28,39 +29,37 @@ func (check *HealthCheck) Run() {
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	timerSource := fmt.Sprintf("%s-check-timer", check.ID)
-	timercfg := &EventTimerConfig{
-		ctx:  ctx,
-		rx:   check.rx,
-		tick: time.Duration(check.heartbeat) * time.Second,
-		name: timerSource,
-	}
-	NewEventTimer(timercfg)
+	events.NewEventTimer(ctx, check.Rx,
+		time.Duration(check.heartbeat)*time.Second, timerSource)
 
 	go func() {
 		select {
-		case event := <-check.rx:
+		case event := <-check.Rx:
 			switch event.Code {
-			case TimerExpired:
+			case events.TimerExpired:
 				if event.Source == timerSource {
 					fmt.Printf("checking: %s\n", check.ID)
-					check.bus.Publish(Event{Code: StatusChanged, Source: check.ID})
+					check.Bus.Publish(
+						events.Event{Code: events.StatusChanged, Source: check.ID})
 				}
-			case Quit:
+			case events.Quit:
 				if event.Source == check.ID {
 					break
 				}
 				fallthrough
-			case Shutdown:
-				check.Unsubscribe(check.bus)
-				close(check.rx)
+			case events.Shutdown:
+				check.Unsubscribe(check.Bus)
+				close(check.Rx)
 				cancel()
-				check.flush <- true
+				check.Flush <- true
 				return
 			case check.startupEvent.Code:
 				// run this in a goroutine and pass it our context
-				check.bus.Publish(Event{Code: Started, Source: check.ID})
+				check.Bus.Publish(
+					events.Event{Code: events.Started, Source: check.ID})
 				fmt.Println("check exec running!")
-				check.bus.Publish(Event{Code: ExitSuccess, Source: check.ID})
+				check.Bus.Publish(
+					events.Event{Code: events.ExitSuccess, Source: check.ID})
 			default:
 				fmt.Println("don't care about this message")
 			}

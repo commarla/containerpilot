@@ -1,4 +1,4 @@
-package events
+package watches
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/joyent/containerpilot/commands"
+	"github.com/joyent/containerpilot/events"
 )
 
 type Watch struct {
@@ -15,8 +16,8 @@ type Watch struct {
 	Poll    int
 
 	// Event handling
-	EventHandler
-	startupEvent   Event
+	events.EventHandler
+	startupEvent   events.Event
 	startupTimeout int
 	heartbeat      int
 }
@@ -27,39 +28,37 @@ func (watch *Watch) Run() {
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	timerSource := fmt.Sprintf("%s-watch-timer", watch.ID)
-	timercfg := &EventTimerConfig{
-		ctx:  ctx,
-		rx:   watch.rx,
-		tick: time.Duration(watch.heartbeat) * time.Second,
-		name: timerSource,
-	}
-	NewEventTimer(timercfg)
+	events.NewEventTimer(ctx, watch.Rx,
+		time.Duration(watch.heartbeat)*time.Second, timerSource)
 
 	go func() {
 		select {
-		case event := <-watch.rx:
+		case event := <-watch.Rx:
 			switch event.Code {
-			case TimerExpired:
+			case events.TimerExpired:
 				if event.Source == timerSource {
 					fmt.Printf("checking: %s\n", watch.ID)
-					watch.bus.Publish(Event{Code: StatusChanged, Source: watch.ID})
+					watch.Bus.Publish(
+						events.Event{Code: events.StatusChanged, Source: watch.ID})
 				}
-			case Quit:
+			case events.Quit:
 				if event.Source != watch.ID {
 					break
 				}
 				fallthrough
-			case Shutdown:
-				watch.Unsubscribe(watch.bus)
-				close(watch.rx)
+			case events.Shutdown:
+				watch.Unsubscribe(watch.Bus)
+				close(watch.Rx)
 				cancel()
-				watch.flush <- true
+				watch.Flush <- true
 				return
 			case watch.startupEvent.Code:
 				// run this in a goroutine and pass it our context
-				watch.bus.Publish(Event{Code: Started, Source: watch.ID})
+				watch.Bus.Publish(
+					events.Event{Code: events.Started, Source: watch.ID})
 				fmt.Println("watch exec running!")
-				watch.bus.Publish(Event{Code: ExitSuccess, Source: watch.ID})
+				watch.Bus.Publish(
+					events.Event{Code: events.ExitSuccess, Source: watch.ID})
 			default:
 				fmt.Println("don't care about this message")
 			}
