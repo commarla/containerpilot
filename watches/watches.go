@@ -38,6 +38,7 @@ func NewWatch(cfg *WatchConfig) (*Watch, error) {
 
 	cmd, err := commands.NewCommand(cfg.OnChangeExec, cfg.Timeout)
 	if err != nil {
+		// TODO: this error message is tied to existing config syntax
 		return nil, fmt.Errorf("could not parse `onChange` in watch %s: %s",
 			cfg.Name, err)
 	}

@@ -51,10 +51,9 @@ func (check *HealthCheck) CheckHealth(ctx context.Context) error {
 		"process": check.startupEvent.Code, "check": check.ID})
 }
 
-func (check *HealthCheck) Run() {
-	// TODO: this will probably be a background context b/c we've got
-	// message-passing to the main loop for cancellation
-	ctx, cancel := context.WithCancel(context.TODO())
+func (check *HealthCheck) Run(bus *events.EventBus) {
+	check.Bus = bus
+	ctx, cancel := context.WithCancel(context.Background())
 
 	timerSource := fmt.Sprintf("%s-check-timer", check.ID)
 	events.NewEventTimer(ctx, check.Rx,

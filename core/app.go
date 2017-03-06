@@ -138,7 +138,7 @@ func NewApp(configFlag string) (*App, error) {
 	// forked processes have access to this information
 	for _, service := range a.Services {
 		envKey := getEnvVarNameFromService(service.Name)
-		os.Setenv(envKey, service.IPAddress)
+		os.Setenv(envKey, service.Definition.IPAddress)
 	}
 
 	return a, nil
@@ -339,13 +339,19 @@ func (a *App) forAllServices(fn serviceFunc) {
 func (a *App) handlePolling() {
 	var quit []chan bool
 
+	for _, service := range a.Services {
+		service.Subscribe(a.Bus)
+		service.Run(a.Bus)
+	}
+	for _, check := range a.Checks {
+		check.Subscribe(a.Bus)
+		check.Run(a.Bus)
+	}
 	for _, watch := range a.Watches {
 		watch.Subscribe(a.Bus)
 		watch.Run(a.Bus)
 	}
-	for _, service := range a.Services {
-		quit = append(quit, a.poll(service))
-	}
+
 	if a.Telemetry != nil {
 		for _, sensor := range a.Telemetry.Sensors {
 			quit = append(quit, a.poll(sensor))
