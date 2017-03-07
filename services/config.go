@@ -11,7 +11,7 @@ import (
 
 // ServiceConfig holds the configuration for service discovery data
 type ServiceConfig struct {
-	ID               string
+	ID               string      // used only for ServiceDefinition
 	Exec             interface{} // TODO: this will be parsed from config when we update syntax
 	Name             string      `mapstructure:"name"`
 	Heartbeat        int         `mapstructure:"poll"` // time in seconds

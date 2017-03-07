@@ -19,7 +19,6 @@ const (
 // Service configures the service discovery data
 type Service struct {
 	Name             string
-	ID               string
 	exec             *commands.Command
 	heartbeat        int
 	Status           bool // TODO: we'll need this to carry more info than bool
@@ -40,7 +39,6 @@ type Service struct {
 func NewService(cfg *ServiceConfig) (*Service, error) {
 	service := &Service{
 		Name:             cfg.Name,
-		ID:               cfg.ID,
 		heartbeat:        cfg.Heartbeat,
 		discoveryService: cfg.discoveryService,
 		Definition:       cfg.definition,
@@ -75,19 +73,19 @@ func (svc *Service) Run(bus *events.EventBus) {
 	svc.Bus = bus
 	ctx, cancel := context.WithCancel(context.Background())
 
-	runEverySource := fmt.Sprintf("%s-run-every", svc.ID)
+	runEverySource := fmt.Sprintf("%s-run-every", svc.Name)
 	if svc.runEvery > 0 {
 		events.NewEventTimeout(ctx, svc.Rx,
 			time.Duration(svc.runEvery)*time.Second, runEverySource)
 	}
 
-	heartbeatSource := fmt.Sprintf("%s-heartbeat", svc.ID)
+	heartbeatSource := fmt.Sprintf("%s-heartbeat", svc.Name)
 	if svc.heartbeat > 0 {
 		events.NewEventTimeout(ctx, svc.Rx,
 			time.Duration(svc.heartbeat)*time.Second, heartbeatSource)
 	}
 
-	timeoutSource := fmt.Sprintf("%s-wait-timeout", svc.ID)
+	timeoutSource := fmt.Sprintf("%s-wait-timeout", svc.Name)
 	if svc.startupTimeout > 0 {
 		events.NewEventTimeout(ctx, svc.Rx,
 			time.Duration(svc.startupTimeout)*time.Second, timeoutSource)
@@ -106,18 +104,18 @@ func (svc *Service) Run(bus *events.EventBus) {
 						svc.SendHeartbeat()
 					}
 				case timeoutSource:
-					svc.Bus.Publish(events.Event{Code: events.TimerExpired, Source: svc.ID})
-					svc.Rx <- events.Event{Code: events.Quit, Source: svc.ID}
+					svc.Bus.Publish(events.Event{Code: events.TimerExpired, Source: svc.Name})
+					svc.Rx <- events.Event{Code: events.Quit, Source: svc.Name}
 				case runEverySource:
 					if !svc.restart || (svc.restartLimit != unlimitedRestarts &&
 						svc.restartsRemain <= haltRestarts) {
 						break
 					}
 					svc.restartsRemain--
-					svc.Rx <- events.Event{Code: svc.startupEvent.Code, Source: svc.ID}
+					svc.Rx <- events.Event{Code: svc.startupEvent.Code, Source: svc.Name}
 				}
 			case events.Quit:
-				if event.Source == svc.ID {
+				if event.Source != svc.Name {
 					break
 				}
 				fallthrough
@@ -129,7 +127,7 @@ func (svc *Service) Run(bus *events.EventBus) {
 				return
 			case events.ExitSuccess:
 			case events.ExitFailed:
-				if event.Source != svc.ID {
+				if event.Source != svc.Name {
 					break
 				}
 				if !svc.restart || (svc.restartLimit != unlimitedRestarts &&
@@ -137,7 +135,7 @@ func (svc *Service) Run(bus *events.EventBus) {
 					break
 				}
 				svc.restartsRemain--
-				svc.Rx <- events.Event{Code: svc.startupEvent.Code, Source: svc.ID}
+				svc.Rx <- events.Event{Code: svc.startupEvent.Code, Source: svc.Name}
 			case svc.startupEvent.Code:
 				// run this in a goroutine and pass it our context
 				svc.Bus.Publish(events.Event{Code: events.Started, Source: svc.ID})
