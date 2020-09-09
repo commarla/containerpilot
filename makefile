@@ -19,12 +19,24 @@ DOCKERRUN := docker run --rm \
 	-w /cp/src/${IMPORT_PATH} \
 	containerpilot2_build
 
-DOCKERBUILD := docker run --rm \
+DOCKERBUILD_LINUX_ARM64 := docker run --rm \
+	-e GOOS=linux \
+	-e GOARCH=arm64 \
 	-e LDFLAGS="${LDFLAGS}" \
 	-v ${ROOT}/vendor:/go/src \
 	-v ${ROOT}:/cp/src/${IMPORT_PATH} \
 	-w /cp/src/${IMPORT_PATH} \
 	containerpilot2_build
+
+DOCKERBUILD_LINUX_AMD64 := docker run --rm \
+	-e GOOS=linux \
+	-e GOARCH=amd64 \
+	-e LDFLAGS="${LDFLAGS}" \
+	-v ${ROOT}/vendor:/go/src \
+	-v ${ROOT}:/cp/src/${IMPORT_PATH} \
+	-w /cp/src/${IMPORT_PATH} \
+	containerpilot2_build
+
 
 clean:
 	rm -rf build release cover vendor
@@ -40,7 +52,10 @@ clean:
 build: build/containerpilot
 
 build/containerpilot:  build/containerpilot2_build */*.go vendor
-	${DOCKERBUILD} go build -o build/containerpilot -ldflags "$(LDFLAGS)"
+	mkdir -p ${ROOT}/vendor/bitbucket.org/ww
+	cp -pr ${ROOT}/vendor/github.com/adjust/goautoneg ${ROOT}/vendor/bitbucket.org/ww/
+	${DOCKERBUILD_LINUX_AMD64} go build -o build/containerpilot_linux_amd64 -ldflags "$(LDFLAGS)"
+	${DOCKERBUILD_LINUX_ARM64} go build -o build/containerpilot_linux_arm64 -ldflags "$(LDFLAGS)"
 	@rm -rf src || true
 
 # builds the builder container
@@ -57,7 +72,7 @@ docker: build/containerpilot2_build consul etcd
 # top-level target for vendoring our packages: glide install requires
 # being in the package directory so we have to run this for each package
 vendor: build/containerpilot2_build
-	${DOCKERBUILD} glide install
+	${DOCKERBUILD_LINUX_AMD64} glide install
 
 # fetch a dependency via go get, vendor it, and then save into the parent
 # package's glide.yml
@@ -74,7 +89,7 @@ add-dep: build/containerpilot2_build
 # develop and test
 
 lint: vendor
-	${DOCKERBUILD} bash ./scripts/lint.sh
+	${DOCKERBUILD_LINUX_AMD64} bash ./scripts/lint.sh
 
 # run unit tests and write out test coverage
 test: docker vendor
